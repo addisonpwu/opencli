@@ -49,23 +49,61 @@ describe('browser helpers', () => {
     expect(__test__.appendLimited('12345', '67890', 8)).toBe('34567890');
   });
 
-  it('builds Playwright MCP args with kebab-case executable path', () => {
-    expect(__test__.buildMcpArgs({
-      mcpPath: '/tmp/cli.js',
-      executablePath: '/mnt/c/Program Files/Google/Chrome/Application/chrome.exe',
-    })).toEqual([
-      '/tmp/cli.js',
-      '--extension',
-      '--executable-path',
-      '/mnt/c/Program Files/Google/Chrome/Application/chrome.exe',
-    ]);
+  it('builds extension MCP args in local mode (no CI)', () => {
+    const savedCI = process.env.CI;
+    delete process.env.CI;
+    try {
+      expect(__test__.buildMcpArgs({
+        mcpPath: '/tmp/cli.js',
+        executablePath: '/mnt/c/Program Files/Google/Chrome/Application/chrome.exe',
+      })).toEqual([
+        '/tmp/cli.js',
+        '--extension',
+        '--executable-path',
+        '/mnt/c/Program Files/Google/Chrome/Application/chrome.exe',
+      ]);
 
-    expect(__test__.buildMcpArgs({
-      mcpPath: '/tmp/cli.js',
-    })).toEqual([
-      '/tmp/cli.js',
-      '--extension',
-    ]);
+      expect(__test__.buildMcpArgs({
+        mcpPath: '/tmp/cli.js',
+      })).toEqual([
+        '/tmp/cli.js',
+        '--extension',
+      ]);
+    } finally {
+      if (savedCI !== undefined) {
+        process.env.CI = savedCI;
+      } else {
+        delete process.env.CI;
+      }
+    }
+  });
+
+  it('builds standalone MCP args in CI mode', () => {
+    const savedCI = process.env.CI;
+    process.env.CI = 'true';
+    try {
+      // CI mode: no --extension — browser launches in standalone headed mode
+      expect(__test__.buildMcpArgs({
+        mcpPath: '/tmp/cli.js',
+      })).toEqual([
+        '/tmp/cli.js',
+      ]);
+
+      expect(__test__.buildMcpArgs({
+        mcpPath: '/tmp/cli.js',
+        executablePath: '/usr/bin/chromium',
+      })).toEqual([
+        '/tmp/cli.js',
+        '--executable-path',
+        '/usr/bin/chromium',
+      ]);
+    } finally {
+      if (savedCI !== undefined) {
+        process.env.CI = savedCI;
+      } else {
+        delete process.env.CI;
+      }
+    }
   });
 
   it('times out slow promises', async () => {
