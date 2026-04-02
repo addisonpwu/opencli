@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.6.1](https://github.com/jackwener/opencli/compare/v1.6.0...v1.6.1) (2026-04-02)
+
+
+### Bug Fixes
+
+* sync package-lock.json version with package.json ([#698](https://github.com/jackwener/opencli/issues/698))
+
+
 ## [1.6.0](https://github.com/jackwener/opencli/compare/v1.5.9...v1.6.0) (2026-04-02)
 
 
