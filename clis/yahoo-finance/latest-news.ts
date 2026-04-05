@@ -1,3 +1,5 @@
+import * as fs from 'node:fs';
+import * as path from 'node:path';
 import { cli, Strategy } from '@jackwener/opencli/registry';
 
 cli({
@@ -9,17 +11,19 @@ cli({
   timeoutSeconds: 180,
   args: [
     { name: 'limit', type: 'int', default: 20, help: 'Number of news items' },
+    { name: 'output', default: '.', help: 'Output directory for stock_news.json' },
   ],
   columns: ['rank', 'title', 'source', 'time', 'content', 'url'],
   func: async (page: any, kwargs: Record<string, any>) => {
     const limit = Number(kwargs.limit) || 20;
+    const outputDir = (kwargs.output as string) || '.';
 
     await page.goto('https://hk.finance.yahoo.com/topic/latest-news/');
     await page.wait(3);
 
     const fetchLimit = Math.min(limit, 50);
 
-    return await page.evaluate(`
+    const results = await page.evaluate(`
       (async () => {
         const cleanText = (v) => (v || '').replace(/\\s+/g, ' ').trim();
         const results = [];
@@ -98,5 +102,14 @@ cli({
         return final.map((item, i) => ({ rank: i + 1, ...item }));
       })()
     `);
+
+    // Save results to stock_news.json
+    if (Array.isArray(results) && results.length > 0) {
+      const outputPath = path.resolve(outputDir, 'stock_news.json');
+      fs.mkdirSync(path.dirname(outputPath), { recursive: true });
+      fs.writeFileSync(outputPath, JSON.stringify(results, null, 2) + '\n');
+    }
+
+    return results;
   },
 });

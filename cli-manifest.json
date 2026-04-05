@@ -9520,6 +9520,13 @@
         "default": 20,
         "required": false,
         "help": "Number of news items"
+      },
+      {
+        "name": "output",
+        "type": "str",
+        "default": ".",
+        "required": false,
+        "help": "Output directory for stock_news.json"
       }
     ],
     "columns": [
@@ -9530,6 +9537,7 @@
       "content",
       "url"
     ],
+    "timeout": 180,
     "type": "ts",
     "modulePath": "yahoo-finance/latest-news.js",
     "sourceFile": "yahoo-finance/latest-news.ts"
