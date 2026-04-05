@@ -1,4 +1,4 @@
-import { cli, Strategy } from '../../registry.js';
+import { cli, Strategy } from '@jackwener/opencli/registry';
 
 cli({
   site: 'yahoo-finance',
@@ -10,7 +10,7 @@ cli({
     { name: 'limit', type: 'int', default: 20, help: 'Number of news items' },
   ],
   columns: ['rank', 'title', 'source', 'time', 'content', 'url'],
-  func: async (page, kwargs) => {
+  func: async (page: any, kwargs: Record<string, any>) => {
     const limit = Number(kwargs.limit) || 20;
 
     await page.goto('https://hk.finance.yahoo.com/topic/latest-news/');
