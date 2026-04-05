@@ -5,8 +5,12 @@
  * Dynamic adapter commands are registered via commanderAdapter.ts.
  */
 
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { Command } from 'commander';
 import chalk from 'chalk';
+import { findPackageRoot, getBuiltEntryCandidates } from './package-paths.js';
 import { type CliCommand, fullName, getRegistry, strategyLabel } from './registry.js';
 import { serializeCommand, formatArgSummary } from './serialization.js';
 import { render as renderOutput } from './output.js';
@@ -18,6 +22,8 @@ import { registerAllCommands } from './commanderAdapter.js';
 import { EXIT_CODES, getErrorMessage } from './errors.js';
 import { daemonStatus, daemonStop, daemonRestart } from './commands/daemon.js';
 
+const CLI_FILE = fileURLToPath(import.meta.url);
+
 /** Create a browser page for operate commands. Uses 'operate' workspace for session persistence. */
 async function getOperatePage(): Promise<import('./types.js').IPage> {
   const { BrowserBridge } = await import('./browser/index.js');
@@ -25,7 +31,11 @@ async function getOperatePage(): Promise<import('./types.js').IPage> {
   return bridge.connect({ timeout: 30, workspace: 'operate:default' });
 }
 
-export function runCli(BUILTIN_CLIS: string, USER_CLIS: string): void {
+function applyVerbose(opts: { verbose?: boolean }): void {
+  if (opts.verbose) process.env.OPENCLI_VERBOSE = '1';
+}
+
+export function createProgram(BUILTIN_CLIS: string, USER_CLIS: string): Command {
   const program = new Command();
   // enablePositionalOptions: prevents parent from consuming flags meant for subcommands;
   // prerequisite for passThroughOptions to forward --help/--version to external binaries
@@ -145,7 +155,16 @@ export function runCli(BUILTIN_CLIS: string, USER_CLIS: string): void {
     .option('--wait <s>', '', '3')
     .option('--auto', 'Enable interactive fuzzing')
     .option('--click <labels>', 'Comma-separated labels to click before fuzzing')
-    .action(async (url, opts) => {
+    .option('-v, --verbose', 'Debug output')
+    .action(async (url: string, opts: {
+      site?: string;
+      goal?: string;
+      wait: string;
+      auto?: boolean;
+      click?: string;
+      verbose?: boolean;
+    }) => {
+      applyVerbose(opts);
       const { exploreUrl, renderExploreSummary } = await import('./explore.js');
       const clickLabels = opts.click
         ? opts.click.split(',').map((s: string) => s.trim())
@@ -168,7 +187,9 @@ export function runCli(BUILTIN_CLIS: string, USER_CLIS: string): void {
     .description('Synthesize CLIs from explore')
     .argument('<target>')
     .option('--top <n>', '', '3')
+    .option('-v, --verbose', 'Debug output')
     .action(async (target, opts) => {
+      applyVerbose(opts);
       const { synthesizeFromExplore, renderSynthesizeSummary } = await import('./synthesize.js');
       console.log(renderSynthesizeSummary(synthesizeFromExplore(target, { top: parseInt(opts.top) })));
     });
@@ -179,7 +200,13 @@ export function runCli(BUILTIN_CLIS: string, USER_CLIS: string): void {
     .argument('<url>')
     .option('--goal <text>')
     .option('--site <name>')
-    .action(async (url, opts) => {
+    .option('-v, --verbose', 'Debug output')
+    .action(async (url: string, opts: {
+      goal?: string;
+      site?: string;
+      verbose?: boolean;
+    }) => {
+      applyVerbose(opts);
       const { generateCliFromUrl, renderGenerateSummary } = await import('./generate.js');
       const workspace = `generate:${inferHost(url, opts.site)}`;
       const r = await generateCliFromUrl({
@@ -203,7 +230,15 @@ export function runCli(BUILTIN_CLIS: string, USER_CLIS: string): void {
     .option('--out <dir>', 'Output directory for candidates')
     .option('--poll <ms>', 'Poll interval in milliseconds', '2000')
     .option('--timeout <ms>', 'Auto-stop after N milliseconds (default: 60000)', '60000')
-    .action(async (url, opts) => {
+    .option('-v, --verbose', 'Debug output')
+    .action(async (url: string, opts: {
+      site?: string;
+      out?: string;
+      poll: string;
+      timeout: string;
+      verbose?: boolean;
+    }) => {
+      applyVerbose(opts);
       const { recordSession, renderRecordSummary } = await import('./record.js');
       const result = await recordSession({
         BrowserFactory: getBrowserFactory(),
@@ -222,7 +257,12 @@ export function runCli(BUILTIN_CLIS: string, USER_CLIS: string): void {
     .description('Strategy cascade: find simplest working strategy')
     .argument('<url>')
     .option('--site <name>')
-    .action(async (url, opts) => {
+    .option('-v, --verbose', 'Debug output')
+    .action(async (url: string, opts: {
+      site?: string;
+      verbose?: boolean;
+    }) => {
+      applyVerbose(opts);
       const { cascadeProbe, renderCascadeResult } = await import('./cascade.js');
       const workspace = `cascade:${inferHost(url, opts.site)}`;
       const result = await browserSession(getBrowserFactory(), async (page) => {
@@ -589,12 +629,9 @@ cli({
           return;
         }
 
-        const { execSync } = await import('node:child_process');
+        const { execFileSync } = await import('node:child_process');
         const os = await import('node:os');
-        const path = await import('node:path');
         const filePath = path.join(os.homedir(), '.opencli', 'clis', site, `${command}.ts`);
-
-        const fs = await import('node:fs');
         if (!fs.existsSync(filePath)) {
           console.error(`Adapter not found: ${filePath}`);
           console.error(`Run "opencli operate init ${name}" to create it.`);
@@ -605,19 +642,27 @@ cli({
         console.log(`🔍 Verifying ${name}...\n`);
         console.log(`  Loading: ${filePath}`);
 
+        // Read adapter to check if it defines a 'limit' arg
+        const adapterSrc = fs.readFileSync(filePath, 'utf-8');
+        const hasLimitArg = /['"]limit['"]/.test(adapterSrc);
+        const limitFlag = hasLimitArg ? ' --limit 3' : '';
+        const limitArgs = hasLimitArg ? ['--limit', '3'] : [];
+        const invocation = resolveOperateVerifyInvocation();
+
         try {
-          const output = execSync(`node dist/main.js ${site} ${command} --limit 3`, {
-            cwd: path.join(path.dirname(import.meta.url.replace('file://', '')), '..'),
+          const output = execFileSync(invocation.binary, [...invocation.args, site, command, ...limitArgs], {
+            cwd: invocation.cwd,
             timeout: 30000,
             encoding: 'utf-8',
             env: process.env,
             stdio: ['pipe', 'pipe', 'pipe'],
+            ...(invocation.shell ? { shell: true } : {}),
           });
-          console.log(`  Executing: opencli ${site} ${command} --limit 3\n`);
+          console.log(`  Executing: opencli ${site} ${command}${limitFlag}\n`);
           console.log(output);
           console.log(`\n  ✓ Adapter works!`);
         } catch (err: any) {
-          console.log(`  Executing: opencli ${site} ${command} --limit 3\n`);
+          console.log(`  Executing: opencli ${site} ${command}${limitFlag}\n`);
           if (err.stdout) console.log(err.stdout);
           if (err.stderr) console.error(err.stderr.slice(0, 500));
           console.log(`\n  ✗ Adapter failed. Fix the code and try again.`);
@@ -644,7 +689,9 @@ cli({
     .description('Diagnose opencli browser bridge connectivity')
     .option('--no-live', 'Skip live browser connectivity test')
     .option('--sessions', 'Show active automation sessions', false)
+    .option('-v, --verbose', 'Debug output')
     .action(async (opts) => {
+      applyVerbose(opts);
       const { runBrowserDoctor, renderBrowserDoctorReport } = await import('./doctor.js');
       const report = await runBrowserDoctor({ live: opts.live, sessions: opts.sessions, cliVersion: PKG_VERSION });
       console.log(renderBrowserDoctorReport(report));
@@ -930,7 +977,7 @@ cli({
     .description('Start Anthropic-compatible API proxy for Antigravity')
     .option('--port <port>', 'Server port (default: 8082)', '8082')
     .action(async (opts) => {
-      const { startServe } = await import('./clis/antigravity/serve.js');
+      const { startServe } = await import('../clis/antigravity/serve.js');
       await startServe({ port: parseInt(opts.port) });
     });
 
@@ -954,10 +1001,67 @@ cli({
     process.exitCode = EXIT_CODES.USAGE_ERROR;
   });
 
-  program.parse();
+  return program;
+}
+
+export function runCli(BUILTIN_CLIS: string, USER_CLIS: string): void {
+  createProgram(BUILTIN_CLIS, USER_CLIS).parse();
 }
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
+
+export interface OperateVerifyInvocation {
+  binary: string;
+  args: string[];
+  cwd: string;
+  shell?: boolean;
+}
+
+export { findPackageRoot };
+
+export function resolveOperateVerifyInvocation(opts: {
+  projectRoot?: string;
+  platform?: NodeJS.Platform;
+  fileExists?: (path: string) => boolean;
+  readFile?: (path: string) => string;
+} = {}): OperateVerifyInvocation {
+  const platform = opts.platform ?? process.platform;
+  const fileExists = opts.fileExists ?? fs.existsSync;
+  const readFile = opts.readFile ?? ((filePath: string) => fs.readFileSync(filePath, 'utf-8'));
+  const projectRoot = opts.projectRoot ?? findPackageRoot(CLI_FILE, fileExists);
+
+  for (const builtEntry of getBuiltEntryCandidates(projectRoot, readFile)) {
+    if (fileExists(builtEntry)) {
+      return {
+        binary: process.execPath,
+        args: [builtEntry],
+        cwd: projectRoot,
+      };
+    }
+  }
+
+  const sourceEntry = path.join(projectRoot, 'src', 'main.ts');
+  if (!fileExists(sourceEntry)) {
+    throw new Error(`Could not find opencli entrypoint under ${projectRoot}. Expected built entry from package.json or src/main.ts.`);
+  }
+
+  const localTsxBin = path.join(projectRoot, 'node_modules', '.bin', platform === 'win32' ? 'tsx.cmd' : 'tsx');
+  if (fileExists(localTsxBin)) {
+    return {
+      binary: localTsxBin,
+      args: [sourceEntry],
+      cwd: projectRoot,
+      ...(platform === 'win32' ? { shell: true } : {}),
+    };
+  }
+
+  return {
+    binary: platform === 'win32' ? 'npx.cmd' : 'npx',
+    args: ['tsx', sourceEntry],
+    cwd: projectRoot,
+    ...(platform === 'win32' ? { shell: true } : {}),
+  };
+}
 
 /** Infer a workspace-friendly hostname from a URL, with site override. */
 function inferHost(url: string, site?: string): string {
