@@ -116,6 +116,53 @@
     "sourceFile": "36kr/search.ts"
   },
   {
+    "site": "aastocks",
+    "name": "news",
+    "description": "AASTOCKS 財經新聞 — 利好新聞 (positive) 或推薦新聞 (recommend)",
+    "domain": "www.aastocks.com",
+    "strategy": "public",
+    "browser": false,
+    "args": [
+      {
+        "name": "type",
+        "type": "str",
+        "default": "positive",
+        "required": false,
+        "help": "News type: positive (利好新聞) or recommend (推薦新聞)",
+        "choices": [
+          "positive",
+          "recommend"
+        ]
+      },
+      {
+        "name": "limit",
+        "type": "int",
+        "default": 20,
+        "required": false,
+        "help": "Number of news items (max 50)"
+      },
+      {
+        "name": "output",
+        "type": "str",
+        "default": ".",
+        "required": false,
+        "help": "Output directory for aastocks_news.json"
+      }
+    ],
+    "columns": [
+      "rank",
+      "title",
+      "source",
+      "time",
+      "content",
+      "url"
+    ],
+    "timeout": 180,
+    "type": "ts",
+    "modulePath": "aastocks/news.js",
+    "sourceFile": "aastocks/news.ts"
+  },
+  {
     "site": "antigravity",
     "name": "dump",
     "description": "Dump the DOM to help AI understand the UI",
@@ -4755,7 +4802,7 @@
   {
     "site": "linux-do",
     "name": "topic",
-    "description": "linux.do 帖子详情和回复（首页）",
+    "description": "linux.do 帖子首页摘要和回复（首屏）",
     "domain": "linux.do",
     "strategy": "cookie",
     "browser": true,
@@ -4774,14 +4821,6 @@
         "required": false,
         "positional": false,
         "help": "Number of posts"
-      },
-      {
-        "name": "main_only",
-        "type": "bool",
-        "default": false,
-        "required": false,
-        "positional": false,
-        "help": "Only return the main post body without truncation"
       }
     ],
     "columns": [
@@ -4795,7 +4834,7 @@
         "navigate": "https://linux.do"
       },
       {
-        "evaluate": "(async () => {\n  const mainOnly = ${{ args.main_only }};\n  const toLocalTime = (utcStr) => {\n    if (!utcStr) return '';\n    const date = new Date(utcStr);\n    return Number.isNaN(date.getTime()) ? utcStr : date.toLocaleString();\n  };\n  const res = await fetch('/t/${{ args.id }}.json', { credentials: 'include' });\n  if (!res.ok) throw new Error('HTTP ' + res.status + ' - 请先登录 linux.do');\n  let data;\n  try { data = await res.json(); } catch { throw new Error('响应不是有效 JSON - 请先登录 linux.do'); }\n  const strip = (html) => (html || '')\n    .replace(/<br\\s*\\/?>/gi, ' ')\n    .replace(/<\\/(p|div|li|blockquote|h[1-6])>/gi, ' ')\n    .replace(/<[^>]+>/g, '')\n    .replace(/&nbsp;/g, ' ')\n    .replace(/&amp;/g, '&')\n    .replace(/&lt;/g, '<')\n    .replace(/&gt;/g, '>')\n    .replace(/&quot;/g, '\"')\n    .replace(/&#(?:(\\d+)|x([0-9a-fA-F]+));/g, (_, dec, hex) => {\n      try { return String.fromCodePoint(dec !== undefined ? Number(dec) : parseInt(hex, 16)); } catch { return ''; }\n    })\n    .replace(/\\s+/g, ' ')\n    .trim();\n  const posts = data?.post_stream?.posts || [];\n  if (mainOnly) {\n    const mainPost = posts.find(p => p.post_number === 1);\n    if (!mainPost) return [];\n    return [{\n      author: mainPost.username || '',\n      content: mainPost.cooked || '',\n      likes: mainPost.like_count || 0,\n      created_at: toLocalTime(mainPost.created_at),\n    }];\n  }\n  return posts.slice(0, ${{ args.limit }}).map(p => ({\n    author: p.username,\n    content: strip(p.cooked).slice(0, 200),\n    likes: p.like_count,\n    created_at: toLocalTime(p.created_at),\n  }));\n})()\n"
+        "evaluate": "(async () => {\n  const toLocalTime = (utcStr) => {\n    if (!utcStr) return '';\n    const date = new Date(utcStr);\n    return Number.isNaN(date.getTime()) ? utcStr : date.toLocaleString();\n  };\n  const res = await fetch('/t/${{ args.id }}.json', { credentials: 'include' });\n  if (!res.ok) throw new Error('HTTP ' + res.status + ' - 请先登录 linux.do');\n  let data;\n  try { data = await res.json(); } catch { throw new Error('响应不是有效 JSON - 请先登录 linux.do'); }\n  const strip = (html) => (html || '')\n    .replace(/<br\\s*\\/?>/gi, ' ')\n    .replace(/<\\/(p|div|li|blockquote|h[1-6])>/gi, ' ')\n    .replace(/<[^>]+>/g, '')\n    .replace(/&nbsp;/g, ' ')\n    .replace(/&amp;/g, '&')\n    .replace(/&lt;/g, '<')\n    .replace(/&gt;/g, '>')\n    .replace(/&quot;/g, '\"')\n    .replace(/&#(?:(\\d+)|x([0-9a-fA-F]+));/g, (_, dec, hex) => {\n      try { return String.fromCodePoint(dec !== undefined ? Number(dec) : parseInt(hex, 16)); } catch { return ''; }\n    })\n    .replace(/\\s+/g, ' ')\n    .trim();\n  const posts = data?.post_stream?.posts || [];\n  return posts.slice(0, ${{ args.limit }}).map(p => ({\n    author: p.username,\n    content: strip(p.cooked).slice(0, 200),\n    likes: p.like_count,\n    created_at: toLocalTime(p.created_at),\n  }));\n})()\n"
       },
       {
         "map": {
@@ -4808,6 +4847,29 @@
     ],
     "type": "yaml",
     "sourceFile": "linux-do/topic.yaml"
+  },
+  {
+    "site": "linux-do",
+    "name": "topic-content",
+    "description": "Get the main topic body as Markdown",
+    "domain": "linux.do",
+    "strategy": "cookie",
+    "browser": true,
+    "args": [
+      {
+        "name": "id",
+        "type": "int",
+        "required": true,
+        "positional": true,
+        "help": "Topic ID"
+      }
+    ],
+    "columns": [
+      "content"
+    ],
+    "type": "ts",
+    "modulePath": "linux-do/topic-content.js",
+    "sourceFile": "linux-do/topic-content.ts"
   },
   {
     "site": "linux-do",
@@ -9252,6 +9314,30 @@
   },
   {
     "site": "xueqiu",
+    "name": "groups",
+    "description": "获取雪球自选股分组列表（含模拟组合）",
+    "domain": "xueqiu.com",
+    "strategy": "cookie",
+    "browser": true,
+    "args": [],
+    "columns": [
+      "pid",
+      "name",
+      "count"
+    ],
+    "pipeline": [
+      {
+        "navigate": "https://xueqiu.com"
+      },
+      {
+        "evaluate": "(async () => {\n  const resp = await fetch('https://stock.xueqiu.com/v5/stock/portfolio/list.json?category=1&size=20', {credentials: 'include'});\n  if (!resp.ok) throw new Error('HTTP ' + resp.status + ' Hint: Not logged in?');\n  const d = await resp.json();\n  if (!d.data || !d.data.stocks) throw new Error('获取失败，可能未登录');\n\n  return d.data.stocks.map(g => ({\n    pid: String(g.id),\n    name: g.name,\n    count: g.symbol_count || 0\n  }));\n})()\n"
+      }
+    ],
+    "type": "yaml",
+    "sourceFile": "xueqiu/groups.yaml"
+  },
+  {
+    "site": "xueqiu",
     "name": "hot",
     "description": "获取雪球热门动态",
     "domain": "xueqiu.com",
@@ -9356,6 +9442,60 @@
   },
   {
     "site": "xueqiu",
+    "name": "kline",
+    "description": "获取雪球股票K线（历史行情）数据",
+    "domain": "xueqiu.com",
+    "strategy": "cookie",
+    "browser": true,
+    "args": [
+      {
+        "name": "symbol",
+        "type": "str",
+        "required": true,
+        "positional": true,
+        "help": "股票代码，如 SH600519、SZ000858、AAPL"
+      },
+      {
+        "name": "days",
+        "type": "int",
+        "default": 14,
+        "required": false,
+        "positional": false,
+        "help": "回溯天数（默认14天）"
+      }
+    ],
+    "columns": [
+      "date",
+      "open",
+      "high",
+      "low",
+      "close",
+      "volume"
+    ],
+    "pipeline": [
+      {
+        "navigate": "https://xueqiu.com"
+      },
+      {
+        "evaluate": "(async () => {\n  const symbol = (${{ args.symbol | json }} || '').toUpperCase();\n  const days = parseInt(${{ args.days | json }}) || 14;\n  if (!symbol) throw new Error('Missing argument: symbol');\n\n  // begin = now minus days (for count=-N, returns N items ending at begin)\n  const beginTs = Date.now();\n  const resp = await fetch('https://stock.xueqiu.com/v5/stock/chart/kline.json?symbol=' + encodeURIComponent(symbol) + '&begin=' + beginTs + '&period=day&type=before&count=-' + days, {credentials: 'include'});\n  if (!resp.ok) throw new Error('HTTP ' + resp.status + ' Hint: Not logged in?');\n  const d = await resp.json();\n\n  if (!d.data || !d.data.item || d.data.item.length === 0) return [];\n\n  const columns = d.data.column || [];\n  const items = d.data.item || [];\n  const colIdx = {};\n  columns.forEach((name, i) => { colIdx[name] = i; });\n\n  function fmt(v) { return v == null ? null : v; }\n\n  return items.map(row => ({\n    date: colIdx.timestamp != null ? new Date(row[colIdx.timestamp]).toISOString().split('T')[0] : null,\n    open: fmt(row[colIdx.open]),\n    high: fmt(row[colIdx.high]),\n    low: fmt(row[colIdx.low]),\n    close: fmt(row[colIdx.close]),\n    volume: fmt(row[colIdx.volume]),\n    amount: fmt(row[colIdx.amount]),\n    chg: fmt(row[colIdx.chg]),\n    percent: fmt(row[colIdx.percent]),\n    symbol: symbol\n  }));\n})()\n"
+      },
+      {
+        "map": {
+          "date": "${{ item.date }}",
+          "open": "${{ item.open }}",
+          "high": "${{ item.high }}",
+          "low": "${{ item.low }}",
+          "close": "${{ item.close }}",
+          "volume": "${{ item.volume }}",
+          "percent": "${{ item.percent }}"
+        }
+      }
+    ],
+    "type": "yaml",
+    "sourceFile": "xueqiu/kline.yaml"
+  },
+  {
+    "site": "xueqiu",
     "name": "search",
     "description": "搜索雪球股票（代码或名称）",
     "domain": "xueqiu.com",
@@ -9456,18 +9596,18 @@
   {
     "site": "xueqiu",
     "name": "watchlist",
-    "description": "获取雪球自选股列表",
+    "description": "获取雪球自选股/模拟组合股票列表",
     "domain": "xueqiu.com",
     "strategy": "cookie",
     "browser": true,
     "args": [
       {
-        "name": "category",
+        "name": "pid",
         "type": "str",
-        "default": "1",
+        "default": "-1",
         "required": false,
         "positional": false,
-        "help": "分类：1=自选(默认) 2=持仓 3=关注"
+        "help": "分组ID：-1=全部(默认) -4=模拟 -5=沪深 -6=美股 -7=港股 -10=实盘 0=持仓（通过 xueqiu groups 获取）"
       },
       {
         "name": "limit",
@@ -9489,7 +9629,7 @@
         "navigate": "https://xueqiu.com"
       },
       {
-        "evaluate": "(async () => {\n  const category = parseInt(${{ args.category | json }}) || 1;\n  const resp = await fetch(`https://stock.xueqiu.com/v5/stock/portfolio/stock/list.json?size=100&category=${category}&pid=-1`, {credentials: 'include'});\n  if (!resp.ok) throw new Error('HTTP ' + resp.status + ' Hint: Not logged in?');\n  const d = await resp.json();\n  if (!d.data || !d.data.stocks) throw new Error('获取失败，可能未登录');\n  \n  return d.data.stocks.map(s => ({\n    symbol: s.symbol,\n    name: s.name,\n    price: s.current,\n    change: s.chg,\n    changePercent: s.percent != null ? s.percent.toFixed(2) + '%' : null,\n    volume: s.volume,\n    url: 'https://xueqiu.com/S/' + s.symbol\n  }));\n})()\n"
+        "evaluate": "(async () => {\n  const pid = ${{ args.pid | json }} || '-1';\n  const resp = await fetch(`https://stock.xueqiu.com/v5/stock/portfolio/stock/list.json?size=100&category=1&pid=${encodeURIComponent(pid)}`, {credentials: 'include'});\n  if (!resp.ok) throw new Error('HTTP ' + resp.status + ' Hint: Not logged in?');\n  const d = await resp.json();\n  if (!d.data || !d.data.stocks) throw new Error('获取失败，可能未登录');\n\n  return d.data.stocks.map(s => ({\n    symbol: s.symbol,\n    name: s.name,\n    price: s.current,\n    change: s.chg,\n    changePercent: s.percent != null ? s.percent.toFixed(2) + '%' : null,\n    volume: s.volume,\n    url: 'https://xueqiu.com/S/' + s.symbol\n  }));\n})()\n"
       },
       {
         "map": {
