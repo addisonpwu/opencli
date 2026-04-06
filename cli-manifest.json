@@ -2344,6 +2344,42 @@
     "navigateBefore": false
   },
   {
+    "site": "eastmoney-hk",
+    "name": "news",
+    "description": "东方财富港股市场快讯",
+    "domain": "hk.eastmoney.com",
+    "strategy": "public",
+    "browser": true,
+    "args": [
+      {
+        "name": "limit",
+        "type": "int",
+        "default": 20,
+        "required": false,
+        "help": "Number of news items (max 50)"
+      },
+      {
+        "name": "output",
+        "type": "str",
+        "default": ".",
+        "required": false,
+        "help": "Output directory for eastmoney_hk_news.json"
+      }
+    ],
+    "columns": [
+      "rank",
+      "title",
+      "source",
+      "time",
+      "content",
+      "url"
+    ],
+    "timeout": 300,
+    "type": "ts",
+    "modulePath": "eastmoney-hk/news.js",
+    "sourceFile": "eastmoney-hk/news.ts"
+  },
+  {
     "site": "facebook",
     "name": "add-friend",
     "description": "Send a friend request on Facebook",
