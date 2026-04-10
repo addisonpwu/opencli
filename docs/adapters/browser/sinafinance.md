@@ -10,6 +10,7 @@
 | `opencli sinafinance rolling-news` | 新浪财经滚动新闻 | 🔐 Browser |
 | `opencli sinafinance stock` | 新浪财经行情（A股/港股/美股） | 🌐 Public |
 | `opencli sinafinance stock-rank` | 新浪财经热搜榜 | 🔐 Browser |
+| `opencli sinafinance hk-news` | 港股中心 - 大行研报和公司新闻 | 🔐 Browser |
 
 ## Usage Examples
 
@@ -79,6 +80,31 @@ opencli sinafinance stock-rank --market wh
 opencli sinafinance stock-rank -f json
 ```
 
+### hk-news - 港股中心新闻
+
+```bash
+# Get both research reports and company news (default: 20 each)
+opencli sinafinance hk-news
+
+# Get only brokerage research reports (大行研报)
+opencli sinafinance hk-news --type research
+
+# Get only company news (公司新闻)
+opencli sinafinance hk-news --type company
+
+# Increase limit per type (max 50)
+opencli sinafinance hk-news --limit 30
+
+# Output to specific directory
+opencli sinafinance hk-news --output ./news
+
+# JSON output
+opencli sinafinance hk-news -f json
+
+# Save to JSON file (sinafinance_hk_news.json)
+opencli sinafinance hk-news --output ./data
+```
+
 ## Options
 
 ### news
@@ -99,6 +125,14 @@ opencli sinafinance stock-rank -f json
 | Option | Description |
 |--------|-------------|
 | `--market` | Market: `cn` (A股, 默认), `ft` (期货), `us` (美股), `wh` (外汇), `hk` (港股) |
+
+### hk-news
+
+| Option | Description |
+|--------|-------------|
+| `--type` | News type: `all` (全部), `research` (大行研报), `company` (公司新闻) |
+| `--limit` | Number of news items per type, up to 50 (default: 20) |
+| `--output` | Output directory for sinafinance_hk_news.json (default: current directory) |
 
 ## Prerequisites
 

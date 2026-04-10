@@ -6273,6 +6273,54 @@
   },
   {
     "site": "sinafinance",
+    "name": "hk-news",
+    "description": "新浪财经港股中心 - 大行研报和公司新闻",
+    "domain": "finance.sina.com.cn",
+    "strategy": "public",
+    "browser": true,
+    "args": [
+      {
+        "name": "type",
+        "type": "str",
+        "default": "all",
+        "required": false,
+        "help": "News type: all (全部), research (大行研报), company (公司新闻)",
+        "choices": [
+          "all",
+          "research",
+          "company"
+        ]
+      },
+      {
+        "name": "limit",
+        "type": "int",
+        "default": 20,
+        "required": false,
+        "help": "Number of news items per type (max 50)"
+      },
+      {
+        "name": "output",
+        "type": "str",
+        "default": ".",
+        "required": false,
+        "help": "Output directory for sinafinance_hk_news.json"
+      }
+    ],
+    "columns": [
+      "rank",
+      "type",
+      "title",
+      "time",
+      "content",
+      "url"
+    ],
+    "timeout": 180,
+    "type": "ts",
+    "modulePath": "sinafinance/hk-news.js",
+    "sourceFile": "sinafinance/hk-news.ts"
+  },
+  {
+    "site": "sinafinance",
     "name": "news",
     "description": "新浪财经 7x24 小时实时快讯",
     "domain": "app.cj.sina.com.cn",
