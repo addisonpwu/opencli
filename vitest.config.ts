@@ -9,14 +9,21 @@ export default defineConfig({
         test: {
           name: 'unit',
           include: ['src/**/*.test.ts'],
-          exclude: ['clis/**/*.test.ts'],
+          exclude: ['clis/**/*.test.{ts,js}'],
+          sequence: { groupOrder: 0 },
+        },
+      },
+      {
+        test: {
+          name: 'extension',
+          include: ['extension/src/**/*.test.ts'],
           sequence: { groupOrder: 0 },
         },
       },
       {
         test: {
           name: 'adapter',
-          include: ['clis/**/*.test.ts'],
+          include: ['clis/**/*.test.{ts,js}'],
           sequence: { groupOrder: 1 },
         },
       },

@@ -10,16 +10,15 @@
  * 6. Lifecycle hooks (onBeforeExecute / onAfterExecute)
  */
 
-import { type CliCommand, type InternalCliCommand, type Arg, type CommandArgs, Strategy, getRegistry, fullName } from './registry.js';
+import { type CliCommand, type InternalCliCommand, type Arg, type CommandArgs, getRegistry, fullName } from './registry.js';
 import type { IPage } from './types.js';
 import { pathToFileURL } from 'node:url';
 import { executePipeline } from './pipeline/index.js';
-import { AdapterLoadError, ArgumentError, BrowserConnectError, CommandExecutionError, getErrorMessage } from './errors.js';
+import { AdapterLoadError, ArgumentError, CommandExecutionError, getErrorMessage } from './errors.js';
 import { isDiagnosticEnabled, collectDiagnostic, emitDiagnostic } from './diagnostic.js';
 import { shouldUseBrowserSession } from './capabilityRouting.js';
 import { getBrowserFactory, browserSession, runWithTimeout, DEFAULT_BROWSER_COMMAND_TIMEOUT } from './runtime.js';
 import { emitHook, type HookContext } from './hooks.js';
-import { checkDaemonStatus } from './browser/discover.js';
 import { log } from './logger.js';
 import { isElectronApp } from './electron-apps.js';
 import { probeCDP, resolveElectronEndpoint } from './launcher.js';
@@ -112,10 +111,7 @@ async function runCommand(
 function resolvePreNav(cmd: CliCommand): string | null {
   if (cmd.navigateBefore === false) return null;
   if (typeof cmd.navigateBefore === 'string') return cmd.navigateBefore;
-
-  if ((cmd.strategy === Strategy.COOKIE || cmd.strategy === Strategy.HEADER) && cmd.domain) {
-    return `https://${cmd.domain}`;
-  }
+  // strategy → navigateBefore expansion already happened in normalizeCommand().
   return null;
 }
 
@@ -136,11 +132,11 @@ export async function executeCommand(
   cmd: CliCommand,
   rawKwargs: CommandArgs,
   debug: boolean = false,
+  opts: { prepared?: boolean } = {},
 ): Promise<unknown> {
   let kwargs: CommandArgs;
   try {
-    kwargs = coerceAndValidateArgs(cmd.args, rawKwargs);
-    cmd.validateArgs?.(kwargs);
+    kwargs = opts.prepared ? rawKwargs : prepareCommandArgs(cmd, rawKwargs);
   } catch (err) {
     if (err instanceof ArgumentError) throw err;
     throw new ArgumentError(getErrorMessage(err));
@@ -175,19 +171,6 @@ export async function executeCommand(
         } else {
           cdpEndpoint = await resolveElectronEndpoint(cmd.site);
         }
-      } else {
-        // Browser Bridge: fail-fast when daemon is up but extension is missing.
-        // 300ms timeout avoids a full 2s wait on cold-start.
-        const status = await checkDaemonStatus({ timeout: 300 });
-        if (status.running && !status.extensionConnected) {
-          throw new BrowserConnectError(
-            'Browser Bridge extension not connected',
-            'Install the Browser Bridge:\n' +
-            '  1. Download: https://github.com/jackwener/opencli/releases\n' +
-            '  2. In Chrome or Chromium, open chrome://extensions → Developer Mode → Load unpacked\n' +
-            '  Then run: opencli doctor',
-          );
-        }
       }
 
       ensureRequiredEnv(cmd);
@@ -203,14 +186,18 @@ export async function executeCommand(
           try {
             await page.goto(preNavUrl);
           } catch (err) {
-            if (debug) log.debug(`[pre-nav] Failed to navigate to ${preNavUrl}: ${err instanceof Error ? err.message : err}`);
+            log.warn(`Pre-navigation to ${preNavUrl} failed: ${err instanceof Error ? err.message : err}`);
           }
         }
         try {
-          return await runWithTimeout(runCommand(cmd, page, kwargs, debug), {
+          const result = await runWithTimeout(runCommand(cmd, page, kwargs, debug), {
             timeout: cmd.timeoutSeconds ?? DEFAULT_BROWSER_COMMAND_TIMEOUT,
             label: fullName(cmd),
           });
+          // Adapter commands are one-shot — close the automation window immediately
+          // instead of waiting for the 30s idle timeout.
+          await page.closeWindow?.().catch(() => {});
+          return result;
         } catch (err) {
           // Collect diagnostic while page is still alive (before browserSession closes it).
           if (isDiagnosticEnabled()) {
@@ -252,4 +239,13 @@ export async function executeCommand(
   hookCtx.finishedAt = Date.now();
   await emitHook('onAfterExecute', hookCtx, result);
   return result;
+}
+
+export function prepareCommandArgs(
+  cmd: CliCommand,
+  rawKwargs: CommandArgs,
+): CommandArgs {
+  const kwargs = coerceAndValidateArgs(cmd.args, rawKwargs);
+  cmd.validateArgs?.(kwargs);
+  return kwargs;
 }
