@@ -15874,6 +15874,43 @@
   },
   {
     "site": "yahoo-finance",
+    "name": "latest-news",
+    "description": "Yahoo 香港財經最新新聞",
+    "domain": "hk.finance.yahoo.com",
+    "strategy": "cookie",
+    "browser": true,
+    "args": [
+      {
+        "name": "limit",
+        "type": "int",
+        "default": 20,
+        "required": false,
+        "help": "Number of news items"
+      },
+      {
+        "name": "output",
+        "type": "str",
+        "default": ".",
+        "required": false,
+        "help": "Output directory for stock_news.json"
+      }
+    ],
+    "columns": [
+      "rank",
+      "title",
+      "source",
+      "time",
+      "content",
+      "url"
+    ],
+    "timeout": 180,
+    "type": "js",
+    "modulePath": "yahoo-finance/latest-news.js",
+    "sourceFile": "yahoo-finance/latest-news.js",
+    "navigateBefore": "https://hk.finance.yahoo.com"
+  },
+  {
+    "site": "yahoo-finance",
     "name": "quote",
     "description": "Yahoo Finance 股票行情",
     "domain": "finance.yahoo.com",
