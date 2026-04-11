@@ -12,8 +12,8 @@ cli({
   description: '新浪财经港股中心 - 大行研报和公司新闻',
   domain: 'finance.sina.com.cn',
   strategy: Strategy.PUBLIC,
-  browser: false,
-  timeoutSeconds: 60,
+  browser: true,
+  timeoutSeconds: 300,
   args: [
     {
       name: 'type',
@@ -39,75 +39,141 @@ cli({
     },
   ],
   columns: ['rank', 'type', 'title', 'time', 'content', 'url'],
-  func: async (_page, kwargs) => {
+  func: async (page, kwargs) => {
     const newsType = kwargs.type || 'all';
     const limit = Math.min(kwargs.limit || 20, 50);
     const outputDir = (kwargs.output as string) || '.';
 
     // Fetch HK stock page
-    const resp = await fetch('https://finance.sina.com.cn/stock/hkstock/', {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-        'Accept-Language': 'zh-CN,zh;q=0.9',
-      },
-    });
+    await page.goto('https://finance.sina.com.cn/stock/hkstock/');
+    await page.wait(3);
 
-    if (!resp.ok) return [];
+    // Extract news list
+    const items = await page.evaluate(`
+      (() => {
+        const cleanText = (v) => (v || '').replace(/\\s+/g, ' ').trim();
+        const results = [];
+        const seenUrls = new Set();
 
-    const html = await resp.text();
-    const results: any[] = [];
-
-    // Extract 大行研报 (Brokerage Research) - class="dxyb"
-    if (newsType === 'all' || newsType === 'research') {
-      const dxybMatch = html.match(/<div class="dxyb"[^>]*>([\s\S]*?)<div class="[^"]*" data-sudaclick="comnews_p">/i);
-      if (dxybMatch) {
-        const dxybHtml = dxybMatch[1];
-        const itemRegex = /<li class="ywzx-item"[^>]*>\s*<a href="([^"]+)"[^>]*>([^<]+)<\/a>/gi;
-        let itemMatch;
-        while ((itemMatch = itemRegex.exec(dxybHtml)) !== null) {
-          const url = itemMatch[1];
-          const title = itemMatch[2].trim();
-          // Skip template placeholders and invalid entries
-          if (!title || title.length < 8 || title.includes('@@=') || title.includes('$')) continue;
-          if (!url || url.includes('@@=')) continue;
-          results.push({ type: '大行研报', title, time: '-', url });
+        // Extract 大行研报 (Brokerage Research) - class="dxyb"
+        const dxybEl = document.querySelector('.dxyb');
+        if (dxybEl) {
+          dxybEl.querySelectorAll('.ywzx-item a[href]').forEach(link => {
+            const href = link.getAttribute('href') || link.href || '';
+            const title = cleanText(link.textContent);
+            if (!title || title.length < 8 || title.includes('@@=') || title.includes('$')) return;
+            if (seenUrls.has(href)) return;
+            seenUrls.add(href);
+            const fullUrl = href.startsWith('http') ? href : 'https://finance.sina.com.cn' + href;
+            results.push({ type: '大行研报', title, time: '-', url: fullUrl });
+          });
         }
-      }
-    }
 
-    // Extract 公司新闻 (Company News) - find by data attribute
-    if (newsType === 'all' || newsType === 'company') {
-      const gsxwIdx = html.indexOf('data-sudaclick="comnews_p"');
-      if (gsxwIdx > 0) {
-        const gsxwSection = html.substring(gsxwIdx, gsxwIdx + 5000);
-        const itemRegex = /<span class="fr cdate">([^<]+)<\/span>\s*<a href="([^"]+)"[^>]*>([^<]+)<\/a>/gi;
-        let itemMatch;
-        while ((itemMatch = itemRegex.exec(gsxwSection)) !== null) {
-          const time = itemMatch[1].trim();
-          const url = itemMatch[2];
-          const title = itemMatch[3].trim();
-          if (!title || title.length < 8) continue;
-          results.push({ type: '公司新闻', title, time, url });
+        // Extract 公司新闻 (Company News) - find by data attribute
+        const comnewsEl = document.querySelector('[data-sudaclick="comnews_p"]');
+        if (comnewsEl) {
+          comnewsEl.querySelectorAll('.ywzx-item').forEach(li => {
+            const timeEl = li.querySelector('.cdate');
+            const link = li.querySelector('a[href]');
+            if (!link) return;
+            const href = link.getAttribute('href') || link.href || '';
+            const title = cleanText(link.textContent);
+            if (!title || title.length < 8 || title.includes('@@=') || title.includes('$')) return;
+            if (seenUrls.has(href)) return;
+            seenUrls.add(href);
+            const time = timeEl ? cleanText(timeEl.textContent) : '-';
+            const fullUrl = href.startsWith('http') ? href : 'https://finance.sina.com.cn' + href;
+            results.push({ type: '公司新闻', title, time, url: fullUrl });
+          });
         }
-      }
-    }
+
+        return results;
+      })()
+    `);
+
+    if (!Array.isArray(items)) return [];
 
     // Filter by type
-    let filtered = results;
-    if (newsType === 'research') filtered = results.filter(i => i.type === '大行研报');
-    else if (newsType === 'company') filtered = results.filter(i => i.type === '公司新闻');
+    let filtered = items;
+    if (newsType === 'research') filtered = items.filter(i => i.type === '大行研报');
+    else if (newsType === 'company') filtered = items.filter(i => i.type === '公司新闻');
 
     const limited = filtered.slice(0, limit * (newsType === 'all' ? 2 : 1));
-    const finalResults = limited.map((item, idx) => ({ rank: idx + 1, content: '-', ...item }));
 
-    // Save to file
-    if (finalResults.length > 0) {
-      const outputPath = path.resolve(outputDir, 'sinafinance_hk_news.json');
-      fs.mkdirSync(path.dirname(outputPath), { recursive: true });
-      fs.writeFileSync(outputPath, JSON.stringify(finalResults, null, 2) + '\n');
+    // Fetch content for each article using browser navigation (like eastmoney-hk)
+    const results: any[] = [];
+
+    for (let i = 0; i < limited.length; i++) {
+      const item = limited[i];
+      let content = '-';
+
+      try {
+        await page.goto(item.url);
+        await page.wait(2);
+
+        content = await page.evaluate(`
+          (() => {
+            const cleanText = (v) => (v || '').replace(/\\s+/g, ' ').trim();
+
+            // Try #artibody first (standard Sina article body)
+            const artibody = document.querySelector('#artibody');
+            if (artibody) {
+              const paragraphs = artibody.querySelectorAll('p');
+              if (paragraphs.length > 0) {
+                const text = Array.from(paragraphs)
+                  .map(p => cleanText(p.textContent))
+                  .filter(t => t.length > 20 && !t.includes('@@=') && !t.includes('$') && 
+                           !t.includes('责任编辑') && !t.includes('.appendQr') && t.length > 20 &&
+                           !t.includes('MACD') && !t.includes('海量资讯'))
+                  .join(' ');
+                if (text.length > 50) {
+                  return text.length > 500 ? text.slice(0, 500) + '...' : text;
+                }
+              }
+            }
+
+            // Fallback: collect meaningful <p> tags from whole page
+            const paragraphs = document.querySelectorAll('p');
+            const parts = [];
+            for (const p of paragraphs) {
+              const text = cleanText(p.textContent);
+              if (text.length > 30 && !text.includes('@@=') && !text.includes('$') &&
+                  !text.includes('责任编辑') && !text.includes('Copyright') && 
+                  !text.includes('sinafinance') && !text.includes('.appendQr') &&
+                  !text.includes('MACD') && !text.includes('海量资讯') &&
+                  !text.match(/^\\s*\\.[a-zA-Z]/)) {  // Skip CSS rules
+                parts.push(text);
+              }
+            }
+            if (parts.length > 0) {
+              const text = parts.join(' ');
+              return text.length > 500 ? text.slice(0, 500) + '...' : text;
+            }
+
+            return '-';
+          })()
+        `);
+      } catch {
+        content = '-';
+      }
+
+      results.push({
+        rank: i + 1,
+        type: item.type,
+        title: item.title,
+        time: item.time,
+        content,
+        url: item.url,
+      });
     }
 
-    return finalResults;
+    // Save results to JSON file
+    if (results.length > 0) {
+      const outputPath = path.resolve(outputDir, 'sinafinance_hk_news.json');
+      fs.mkdirSync(path.dirname(outputPath), { recursive: true });
+      fs.writeFileSync(outputPath, JSON.stringify(results, null, 2) + '\\n');
+    }
+
+    return results;
   },
 });

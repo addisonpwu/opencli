@@ -11530,7 +11530,7 @@
     "description": "新浪财经港股中心 - 大行研报和公司新闻",
     "domain": "finance.sina.com.cn",
     "strategy": "public",
-    "browser": false,
+    "browser": true,
     "args": [
       {
         "name": "type",
@@ -11567,7 +11567,7 @@
       "content",
       "url"
     ],
-    "timeout": 60,
+    "timeout": 300,
     "type": "js",
     "modulePath": "sinafinance/hk-news.js",
     "sourceFile": "sinafinance/hk-news.js"

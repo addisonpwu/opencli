@@ -7,7 +7,8 @@
       "WebFetch(finance.sina.com.cn)",
       "Bash(node *)",
       "Bash(cat *)",
-      "Bash(npx *)"
+      "Bash(npx *)",
+      "Bash(python3 *)"
     ]
   },
   "$version": 3
