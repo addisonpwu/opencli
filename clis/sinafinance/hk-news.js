@@ -7,8 +7,8 @@ cli({
   description: "\u65B0\u6D6A\u8D22\u7ECF\u6E2F\u80A1\u4E2D\u5FC3 - \u5927\u884C\u7814\u62A5\u548C\u516C\u53F8\u65B0\u95FB",
   domain: "finance.sina.com.cn",
   strategy: Strategy.PUBLIC,
-  browser: true,
-  timeoutSeconds: 180,
+  browser: false,
+  timeoutSeconds: 60,
   args: [
     {
       name: "type",
@@ -34,211 +34,60 @@ cli({
     }
   ],
   columns: ["rank", "type", "title", "time", "content", "url"],
-  func: async (page, kwargs) => {
+  func: async (_page, kwargs) => {
     const newsType = kwargs.type || "all";
     const limit = Math.min(kwargs.limit || 20, 50);
     const outputDir = kwargs.output || ".";
-    await page.goto("https://finance.sina.com.cn/stock/hkstock/");
-    await page.wait(3);
-    const extractNews = (type) => `
-      (() => {
-        const cleanText = (v) => (v || '').replace(/\\s+/g, ' ').trim();
-        const results = [];
-
-        // Helper function to extract news from a section
-        const extractFromSection = (sectionTitle, newsType) => {
-          // Find all .m-tab containers
-          const tabs = document.querySelectorAll('.m-tab');
-          for (const tab of tabs) {
-            const titleEl = tab.querySelector('.tit, h3, .m-title');
-            if (!titleEl) continue;
-            const titleText = cleanText(titleEl.textContent);
-            if (!titleText.includes(sectionTitle)) continue;
-
-            // Found the section, extract news items
-            const listContainer = tab.querySelector('.list-01, .news-ul, ul');
-            if (!listContainer) continue;
-
-            const items = listContainer.querySelectorAll('li');
-            items.forEach(li => {
-              const link = li.querySelector('a[href]');
-              if (!link) return;
-              const title = cleanText(link.textContent);
-              if (!title || title.length < 5) return;
-              const href = link.getAttribute('href') || '';
-              if (!href || href.includes('javascript:')) return;
-              
-              // Extract time if present (usually before the title)
-              const fullText = cleanText(li.textContent);
-              const timeMatch = fullText.match(/^(\\d{2}:\\d{2})\\s+/);
-              const time = timeMatch ? timeMatch[1] : '-';
-              
-              const fullUrl = href.startsWith('http') ? href : 'https://finance.sina.com.cn' + href;
-              results.push({
-                type: newsType,
-                title: title.replace(/^\\d{2}:\\d{2}\\s*/, ''), // Remove time prefix from title
-                time,
-                url: fullUrl,
-              });
-            });
-            break; // Found and processed this section
-          }
-        };
-
-        ${type === "all" || type === "research" ? `
-        // \u5927\u884C\u7814\u62A5 section
-        extractFromSection('\u5927\u884C\u7814\u62A5', '\u5927\u884C\u7814\u62A5');
-        ` : ""}
-
-        ${type === "all" || type === "company" ? `
-        // \u516C\u53F8\u65B0\u95FB section
-        extractFromSection('\u516C\u53F8\u65B0\u95FB', '\u516C\u53F8\u65B0\u95FB');
-        ` : ""}
-
-        // Fallback: try direct text matching on all .tit elements
-        if (results.length === 0) {
-          document.querySelectorAll('.tit, h3, .m-title').forEach(titleEl => {
-            const titleText = cleanText(titleEl.textContent);
-            
-            ${type === "all" || type === "research" ? `
-            if (titleText.includes('\u5927\u884C') || titleText.includes('\u7814\u62A5')) {
-              const parent = titleEl.closest('.m-tab, .blk-2');
-              if (parent) {
-                const list = parent.querySelector('.list-01, ul');
-                if (list) {
-                  list.querySelectorAll('li a[href]').forEach(link => {
-                    const title = cleanText(link.textContent).replace(/^\\d{2}:\\d{2}\\s*/, '');
-                    if (title.length < 5) return;
-                    const href = link.getAttribute('href') || '';
-                    if (!href || href.includes('javascript:')) return;
-                    const fullText = cleanText(link.closest('li')?.textContent || '');
-                    const timeMatch = fullText.match(/^(\\d{2}:\\d{2})\\s+/);
-                    const fullUrl = href.startsWith('http') ? href : 'https://finance.sina.com.cn' + href;
-                    results.push({
-                      type: '\u5927\u884C\u7814\u62A5',
-                      title,
-                      time: timeMatch ? timeMatch[1] : '-',
-                      url: fullUrl,
-                    });
-                  });
-                }
-              }
-            }
-            ` : ""}
-
-            ${type === "all" || type === "company" ? `
-            if (titleText.includes('\u516C\u53F8') && titleText.includes('\u65B0\u95FB')) {
-              const parent = titleEl.closest('.m-tab, .blk-2');
-              if (parent) {
-                const list = parent.querySelector('.list-01, ul');
-                if (list) {
-                  list.querySelectorAll('li a[href]').forEach(link => {
-                    const title = cleanText(link.textContent).replace(/^\\d{2}:\\d{2}\\s*/, '');
-                    if (title.length < 5) return;
-                    const href = link.getAttribute('href') || '';
-                    if (!href || href.includes('javascript:')) return;
-                    const fullText = cleanText(link.closest('li')?.textContent || '');
-                    const timeMatch = fullText.match(/^(\\d{2}:\\d{2})\\s+/);
-                    const fullUrl = href.startsWith('http') ? href : 'https://finance.sina.com.cn' + href;
-                    results.push({
-                      type: '\u516C\u53F8\u65B0\u95FB',
-                      title,
-                      time: timeMatch ? timeMatch[1] : '-',
-                      url: fullUrl,
-                    });
-                  });
-                }
-              }
-            }
-            ` : ""}
-          });
-        }
-
-        // Deduplicate by URL
-        const seen = new Set();
-        return results.filter(item => {
-          if (!item.url || seen.has(item.url)) return false;
-          seen.add(item.url);
-          return true;
-        });
-      })()
-    `;
-    const items = await page.evaluate(extractNews(newsType));
-    const limitedItems = items.slice(0, limit * (newsType === "all" ? 2 : 1));
+    const resp = await fetch("https://finance.sina.com.cn/stock/hkstock/", {
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "zh-CN,zh;q=0.9"
+      }
+    });
+    if (!resp.ok) return [];
+    const html = await resp.text();
     const results = [];
-    const batchSize = 3;
-    for (let i = 0; i < limitedItems.length; i += batchSize) {
-      const batch = limitedItems.slice(i, i + batchSize);
-      const batchResults = await Promise.all(
-        batch.map(async (item, idx) => {
-          let content = "-";
-          try {
-            await page.goto(item.url);
-            await page.wait(1);
-            content = await page.evaluate(`
-              (() => {
-                const cleanText = (v) => (v || '').replace(/\\s+/g, ' ').trim();
-                
-                // Try multiple selectors for article content
-                const selectors = [
-                  '#artibody',
-                  '.article-body',
-                  '.newsContent',
-                  '.art_content',
-                  'article',
-                  '.main-content',
-                  '.content',
-                  '#ContentBody',
-                ];
-                
-                for (const sel of selectors) {
-                  const el = document.querySelector(sel);
-                  if (el) {
-                    const text = cleanText(el.textContent);
-                    if (text.length > 20) {
-                      return text.length > 500 ? text.slice(0, 500) + '...' : text;
-                    }
-                  }
-                }
-                
-                // Fallback: get all paragraphs
-                const paragraphs = document.querySelectorAll('p');
-                if (paragraphs.length > 0) {
-                  const text = Array.from(paragraphs)
-                    .map(p => cleanText(p.textContent))
-                    .filter(t => t.length > 10)
-                    .join(' ');
-                  if (text.length > 20) {
-                    return text.length > 500 ? text.slice(0, 500) + '...' : text;
-                  }
-                }
-                
-                return '-';
-              })()
-            `);
-          } catch {
-            content = "-";
-          }
-          return {
-            rank: i + idx + 1,
-            type: item.type,
-            title: item.title,
-            time: item.time,
-            content,
-            url: item.url
-          };
-        })
-      );
-      results.push(...batchResults);
-      if (i + batchSize < limitedItems.length) {
-        await new Promise((resolve) => setTimeout(resolve, 800));
+    if (newsType === "all" || newsType === "research") {
+      const dxybMatch = html.match(/<div class="dxyb"[^>]*>([\s\S]*?)<div class="[^"]*" data-sudaclick="comnews_p">/i);
+      if (dxybMatch) {
+        const dxybHtml = dxybMatch[1];
+        const itemRegex = /<li class="ywzx-item"[^>]*>\s*<a href="([^"]+)"[^>]*>([^<]+)<\/a>/gi;
+        let itemMatch;
+        while ((itemMatch = itemRegex.exec(dxybHtml)) !== null) {
+          const url = itemMatch[1];
+          const title = itemMatch[2].trim();
+          if (!title || title.length < 8 || title.includes("@@=") || title.includes("$")) continue;
+          if (!url || url.includes("@@=")) continue;
+          results.push({ type: "\u5927\u884C\u7814\u62A5", title, time: "-", url });
+        }
       }
     }
-    if (results.length > 0) {
+    if (newsType === "all" || newsType === "company") {
+      const gsxwIdx = html.indexOf('data-sudaclick="comnews_p"');
+      if (gsxwIdx > 0) {
+        const gsxwSection = html.substring(gsxwIdx, gsxwIdx + 5e3);
+        const itemRegex = /<span class="fr cdate">([^<]+)<\/span>\s*<a href="([^"]+)"[^>]*>([^<]+)<\/a>/gi;
+        let itemMatch;
+        while ((itemMatch = itemRegex.exec(gsxwSection)) !== null) {
+          const time = itemMatch[1].trim();
+          const url = itemMatch[2];
+          const title = itemMatch[3].trim();
+          if (!title || title.length < 8) continue;
+          results.push({ type: "\u516C\u53F8\u65B0\u95FB", title, time, url });
+        }
+      }
+    }
+    let filtered = results;
+    if (newsType === "research") filtered = results.filter((i) => i.type === "\u5927\u884C\u7814\u62A5");
+    else if (newsType === "company") filtered = results.filter((i) => i.type === "\u516C\u53F8\u65B0\u95FB");
+    const limited = filtered.slice(0, limit * (newsType === "all" ? 2 : 1));
+    const finalResults = limited.map((item, idx) => ({ rank: idx + 1, content: "-", ...item }));
+    if (finalResults.length > 0) {
       const outputPath = path.resolve(outputDir, "sinafinance_hk_news.json");
       fs.mkdirSync(path.dirname(outputPath), { recursive: true });
-      fs.writeFileSync(outputPath, JSON.stringify(results, null, 2) + "\n");
+      fs.writeFileSync(outputPath, JSON.stringify(finalResults, null, 2) + "\n");
     }
-    return results;
+    return finalResults;
   }
 });

@@ -3,7 +3,11 @@
     "allow": [
       "Bash(npm run *)",
       "Bash(npm test)",
-      "Bash(git commit *)"
+      "Bash(git commit *)",
+      "WebFetch(finance.sina.com.cn)",
+      "Bash(node *)",
+      "Bash(cat *)",
+      "Bash(npx *)"
     ]
   },
   "$version": 3
