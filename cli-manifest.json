@@ -12405,6 +12405,68 @@
     "navigateBefore": false
   },
   {
+    "site": "tdx",
+    "name": "broker-rating",
+    "description": "通达信投行评级 - 按评级/股票筛选",
+    "domain": "fk.tdx.com.cn",
+    "strategy": "public",
+    "browser": true,
+    "args": [
+      {
+        "name": "rating",
+        "type": "str",
+        "default": "强烈推荐",
+        "required": false,
+        "help": "评级类型: 强烈推荐, 推荐, 中性, 减持",
+        "choices": [
+          "强烈推荐",
+          "推荐",
+          "中性",
+          "减持"
+        ]
+      },
+      {
+        "name": "sort",
+        "type": "str",
+        "default": "按评级",
+        "required": false,
+        "help": "排序方式: 按评级, 按股票",
+        "choices": [
+          "按评级",
+          "按股票"
+        ]
+      },
+      {
+        "name": "limit",
+        "type": "int",
+        "default": 50,
+        "required": false,
+        "help": "Number of items (max 100)"
+      },
+      {
+        "name": "output",
+        "type": "str",
+        "default": ".",
+        "required": false,
+        "help": "Output directory for tdx_broker_rating.json"
+      }
+    ],
+    "columns": [
+      "rank",
+      "date",
+      "code",
+      "name",
+      "rating",
+      "lastRating",
+      "broker",
+      "reason"
+    ],
+    "timeout": 300,
+    "type": "js",
+    "modulePath": "tdx/broker-rating.js",
+    "sourceFile": "tdx/broker-rating.js"
+  },
+  {
     "site": "tieba",
     "name": "hot",
     "description": "Tieba hot topics",
