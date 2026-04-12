@@ -39,6 +39,13 @@ cli({
       default: ".",
       required: false,
       help: "Output directory for tdx_broker_rating.json"
+    },
+    {
+      name: "apiUrl",
+      type: "str",
+      default: "",
+      required: false,
+      help: "API endpoint to import broker ratings (e.g., http://localhost:8000/api/v1/broker-ratings/import)"
     }
   ],
   columns: ["rank", "date", "code", "name", "rating", "lastRating", "broker", "reason"],
@@ -47,6 +54,7 @@ cli({
     const sort = kwargs.sort || "\u6309\u8BC4\u7EA7";
     const limit = Math.min(kwargs.limit || 50, 100);
     const outputDir = kwargs.output || ".";
+    const apiUrl = kwargs.apiUrl || process.env.BROKER_RATING_API_URL || "";
     await page.goto("https://fk.tdx.com.cn/site/tdxsj/html/tdxsj_ggsj_ggsj.html?from=www&webfrom=1&pc=0");
     await page.wait(3);
     await page.evaluate(`
@@ -167,6 +175,41 @@ cli({
       const outputPath = path.resolve(outputDir, "tdx_broker_rating.json");
       fs.mkdirSync(path.dirname(outputPath), { recursive: true });
       fs.writeFileSync(outputPath, JSON.stringify(results, null, 2) + "\n");
+    }
+    if (apiUrl && results.length > 0) {
+      console.error(`Importing ${results.length} ratings to ${apiUrl}...`);
+      const importData = results.map((item) => {
+        let code = item.code || "";
+        code = code.replace(/^0+/, "") || "0";
+        code = code.padStart(4, "0");
+        if (!code.includes(".")) {
+          code = `${code}.HK`;
+        }
+        return {
+          rank: item.rank,
+          broker: item.broker,
+          code,
+          date: item.date,
+          lastRating: item.lastRating,
+          name: item.name,
+          rating: item.rating,
+          reason: item.reason || ""
+        };
+      });
+      const resp = await fetch(apiUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(importData),
+        signal: AbortSignal.timeout(3e4)
+      });
+      if (!resp.ok) {
+        const errorText = await resp.text();
+        console.error(`\u26A0  Import failed: ${resp.status} ${errorText}`);
+        console.error("\u{1F4A1} Check API validation rules or ensure server is running correctly.");
+      } else {
+        const importResult = await resp.json();
+        console.error(`\u2705 Import success: ${JSON.stringify(importResult)}`);
+      }
     }
     return results;
   }

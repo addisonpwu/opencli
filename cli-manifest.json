@@ -12449,6 +12449,13 @@
         "default": ".",
         "required": false,
         "help": "Output directory for tdx_broker_rating.json"
+      },
+      {
+        "name": "apiUrl",
+        "type": "str",
+        "default": "",
+        "required": false,
+        "help": "API endpoint to import broker ratings (e.g., http://localhost:8000/api/v1/broker-ratings/import)"
       }
     ],
     "columns": [

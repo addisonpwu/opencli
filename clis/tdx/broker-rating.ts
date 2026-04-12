@@ -45,6 +45,13 @@ cli({
       required: false,
       help: 'Output directory for tdx_broker_rating.json',
     },
+    {
+      name: 'apiUrl',
+      type: 'str',
+      default: '',
+      required: false,
+      help: 'API endpoint to import broker ratings (e.g., http://localhost:8000/api/v1/broker-ratings/import)',
+    },
   ],
   columns: ['rank', 'date', 'code', 'name', 'rating', 'lastRating', 'broker', 'reason'],
   func: async (page, kwargs) => {
@@ -52,6 +59,7 @@ cli({
     const sort = kwargs.sort || '按评级';
     const limit = Math.min(kwargs.limit || 50, 100);
     const outputDir = (kwargs.output as string) || '.';
+    const apiUrl = (kwargs.apiUrl as string) || process.env.BROKER_RATING_API_URL || '';
 
     // Navigate to the page
     await page.goto('https://fk.tdx.com.cn/site/tdxsj/html/tdxsj_ggsj_ggsj.html?from=www&webfrom=1&pc=0');
@@ -189,6 +197,52 @@ cli({
       const outputPath = path.resolve(outputDir, 'tdx_broker_rating.json');
       fs.mkdirSync(path.dirname(outputPath), { recursive: true });
       fs.writeFileSync(outputPath, JSON.stringify(results, null, 2) + '\n');
+    }
+
+    // Import to API if URL is provided
+    if (apiUrl && results.length > 0) {
+      console.error(`Importing ${results.length} ratings to ${apiUrl}...`);
+
+      // Transform data for API
+      const importData = results.map(item => {
+        let code = item.code || '';
+        // Convert to XXXX.HK format
+        // e.g., '01873' -> '1873.HK', '00552' -> '0552.HK', '09988' -> '9988.HK'
+        // Remove leading zeros, then pad to 4 digits
+        code = code.replace(/^0+/, '') || '0';
+        code = code.padStart(4, '0');
+        if (!code.includes('.')) {
+          code = `${code}.HK`;
+        }
+
+        return {
+          rank: item.rank,
+          broker: item.broker,
+          code,
+          date: item.date,
+          lastRating: item.lastRating,
+          name: item.name,
+          rating: item.rating,
+          reason: item.reason || '',
+        };
+      });
+
+      const resp = await fetch(apiUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(importData),
+        signal: AbortSignal.timeout(30000),
+      });
+
+      if (!resp.ok) {
+        const errorText = await resp.text();
+        console.error(`⚠  Import failed: ${resp.status} ${errorText}`);
+        console.error('💡 Check API validation rules or ensure server is running correctly.');
+        // Don't throw - allow JSON file to still be saved
+      } else {
+        const importResult = await resp.json();
+        console.error(`✅ Import success: ${JSON.stringify(importResult)}`);
+      }
     }
 
     return results;
